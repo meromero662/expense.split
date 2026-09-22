@@ -1,198 +1,165 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Expense Split</title>
-</head>
+    <link rel="manifest" href="/static/manifest.json" />
+  </head>
 
-<body>
-
+  <body>
     <h1>Expense Split</h1>
 
     <h2>Add Expense</h2>
 
     <form method="POST">
+      <label for="person">Who paid?</label>
 
-        <label for="person">Who paid?</label>
+      <select name="person" id="person" required>
+        <option value="Mehrshad">Mehrshad</option>
+        <option value="Shaghayegh">Shaghayegh</option>
+      </select>
 
-        <select name="person" id="person" required>
-            <option value="Mehrshad">Mehrshad</option>
-            <option value="Shaghayegh">Shaghayegh</option>
-        </select>
+      <br /><br />
 
-        <br><br>
+      <label for="description">What was it?</label>
 
-        <label for="description">What was it?</label>
+      <input
+        type="text"
+        name="description"
+        id="description"
+        placeholder="e.g. Lunch"
+        required
+      />
 
-        <input
-            type="text"
-            name="description"
-            id="description"
-            placeholder="e.g. Lunch"
-            required
-        >
+      <br /><br />
 
-        <br><br>
+      <label for="amount">Amount (SEK)</label>
 
-        <label for="amount">Amount (SEK)</label>
+      <input
+        type="number"
+        name="amount"
+        id="amount"
+        step="0.01"
+        min="0"
+        required
+      />
 
-        <input
-            type="number"
-            name="amount"
-            id="amount"
-            step="0.01"
-            min="0"
-            required
-        >
+      <br /><br />
 
-        <br><br>
+      <label for="expense_date">Date</label>
 
-        <label for="expense_date">Date</label>
+      <input
+        type="date"
+        name="expense_date"
+        id="expense_date"
+        value="{{ today }}"
+        required
+      />
 
-        <input
-            type="date"
-            name="expense_date"
-            id="expense_date"
-            value="{{ today }}"
-            required
-        >
+      <br /><br />
 
-        <br><br>
-
-        <button type="submit">Add Expense</button>
-
+      <button type="submit">Add Expense</button>
     </form>
 
-    <hr>
+    <hr />
 
     <h2>Current Period</h2>
 
     {% if expenses %}
 
-        <p>
-            <strong>Total expenses:</strong>
-            {{ "%.2f"|format(total) }} SEK
-        </p>
+    <p>
+      <strong>Total expenses:</strong>
+      {{ "%.2f"|format(total) }} SEK
+    </p>
 
-        <p>
-            <strong>Each person's share:</strong>
-            {{ "%.2f"|format(share_per_person) }} SEK
-        </p>
+    <p>
+      <strong>Each person's share:</strong>
+      {{ "%.2f"|format(share_per_person) }} SEK
+    </p>
 
-        <p>
-            <strong>Mehrshad paid:</strong>
-            {{ "%.2f"|format(mehrshad_total) }} SEK
-        </p>
+    <p>
+      <strong>Mehrshad paid:</strong>
+      {{ "%.2f"|format(mehrshad_total) }} SEK
+    </p>
 
-        <p>
-            <strong>Shaghayegh paid:</strong>
-            {{ "%.2f"|format(shaghayegh_total) }} SEK
-        </p>
+    <p>
+      <strong>Shaghayegh paid:</strong>
+      {{ "%.2f"|format(shaghayegh_total) }} SEK
+    </p>
 
-        <h3>{{ debt_text }}</h3>
+    <h3>{{ debt_text }}</h3>
 
-        <form method="POST" action="/settle">
-            <button type="submit">
-                Settle Current Period
-            </button>
-        </form>
+    <form method="POST" action="/settle">
+      <button type="submit">Settle Current Period</button>
+    </form>
 
-        <br>
+    <br />
 
-        <table border="1" cellpadding="8">
+    <table border="1" cellpadding="8">
+      <tr>
+        <th>Date</th>
+        <th>Person</th>
+        <th>Description</th>
+        <th>Amount</th>
+        <th>Actions</th>
+      </tr>
 
-            <tr>
-                <th>Date</th>
-                <th>Person</th>
-                <th>Description</th>
-                <th>Amount</th>
-                <th>Actions</th>
-            </tr>
+      {% for expense in expenses %}
 
-            {% for expense in expenses %}
+      <tr>
+        <td>{{ expense[4] }}</td>
+        <td>{{ expense[1] }}</td>
+        <td>{{ expense[2] }}</td>
+        <td>{{ "%.2f"|format(expense[3]) }} SEK</td>
 
-            <tr>
-                <td>{{ expense[4] }}</td>
-                <td>{{ expense[1] }}</td>
-                <td>{{ expense[2] }}</td>
-                <td>{{ "%.2f"|format(expense[3]) }} SEK</td>
+        <td>
+          <a href="/edit/{{ expense[0] }}"> Edit </a>
 
-                <td>
-                    <a href="/edit/{{ expense[0] }}">
-                        Edit
-                    </a>
+          <form
+            method="POST"
+            action="/delete/{{ expense[0] }}"
+            style="display: inline"
+            onsubmit="return confirm('Delete this expense?');"
+          >
+            <button type="submit">Delete</button>
+          </form>
+        </td>
+      </tr>
 
-                    <form
-                        method="POST"
-                        action="/delete/{{ expense[0] }}"
-                        style="display:inline;"
-                        onsubmit="return confirm('Delete this expense?');"
-                    >
-                        <button type="submit">
-                            Delete
-                        </button>
-                    </form>
-                </td>
-            </tr>
-
-            {% endfor %}
-
-        </table>
+      {% endfor %}
+    </table>
 
     {% else %}
 
-        <p>No expenses in the current period.</p>
+    <p>No expenses in the current period.</p>
 
     {% endif %}
 
-    <hr>
+    <hr />
 
     <h2>Settlement History</h2>
 
-    {% if settlements %}
+    {% if settlements %} {% for settlement in settlements %}
 
-        {% for settlement in settlements %}
+    <h3>Settlement: {{ settlement[1] }}</h3>
 
-            <h3>
-                Settlement: {{ settlement[1] }}
-            </h3>
+    <p>Total: {{ "%.2f"|format(settlement[2]) }} SEK</p>
 
-            <p>
-                Total:
-                {{ "%.2f"|format(settlement[2]) }} SEK
-            </p>
+    <p>Mehrshad paid: {{ "%.2f"|format(settlement[3]) }} SEK</p>
 
-            <p>
-                Mehrshad paid:
-                {{ "%.2f"|format(settlement[3]) }} SEK
-            </p>
+    <p>Shaghayegh paid: {{ "%.2f"|format(settlement[4]) }} SEK</p>
 
-            <p>
-                Shaghayegh paid:
-                {{ "%.2f"|format(settlement[4]) }} SEK
-            </p>
+    <p>Share per person: {{ "%.2f"|format(settlement[5]) }} SEK</p>
 
-            <p>
-                Share per person:
-                {{ "%.2f"|format(settlement[5]) }} SEK
-            </p>
+    <strong> {{ settlement[6] }} </strong>
 
-            <strong>
-                {{ settlement[6] }}
-            </strong>
+    <hr />
 
-            <hr>
+    {% endfor %} {% else %}
 
-        {% endfor %}
-
-    {% else %}
-
-        <p>No settlements yet.</p>
+    <p>No settlements yet.</p>
 
     {% endif %}
-
-</body>
-
+  </body>
 </html>
