@@ -1,69 +1,78 @@
 from flask import Flask, render_template, request, redirect
-import sqlite3
 from datetime import date
+import os
+
+from dotenv import load_dotenv
+from supabase import create_client, Client
+
+
+load_dotenv()
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise RuntimeError(
+        "SUPABASE_URL and SUPABASE_KEY must be set in .env"
+    )
+
+supabase: Client = create_client(
+    SUPABASE_URL,
+    SUPABASE_KEY
+)
 
 app = Flask(__name__)
 
-DB = "expenses.db"
-
-
-def init_db():
-    conn = sqlite3.connect(DB)
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS expenses (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            person TEXT NOT NULL,
-            description TEXT NOT NULL,
-            amount REAL NOT NULL,
-            expense_date TEXT NOT NULL,
-            settled INTEGER DEFAULT 0
-        )
-    """)
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS settlements (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            settlement_date TEXT NOT NULL,
-            total REAL NOT NULL,
-            mehrshad_paid REAL NOT NULL,
-            shaghayegh_paid REAL NOT NULL,
-            share_per_person REAL NOT NULL,
-            debt_text TEXT NOT NULL
-        )
-    """)
-
-    conn.commit()
-    conn.close()
-
 
 def get_active_expenses():
-    conn = sqlite3.connect(DB)
+    response = (
+        supabase
+        .table("expenses")
+        .select("id, person, description, amount, expense_date")
+        .eq("settled", False)
+        .order("expense_date", desc=True)
+        .order("id", desc=True)
+        .execute()
+    )
 
-    expenses = conn.execute("""
-        SELECT id, person, description, amount, expense_date
-        FROM expenses
-        WHERE settled = 0
-        ORDER BY expense_date DESC, id DESC
-    """).fetchall()
-
-    conn.close()
-    return expenses
+    return [
+        (
+            expense["id"],
+            expense["person"],
+            expense["description"],
+            float(expense["amount"]),
+            expense["expense_date"]
+        )
+        for expense in response.data
+    ]
 
 
 def get_settlements():
-    conn = sqlite3.connect(DB)
+    response = (
+        supabase
+        .table("settlements")
+        .select(
+            "id, settlement_date, total, "
+            "mehrshad_paid, shaghayegh_paid, "
+            "share_per_person, debt_text"
+        )
+        .order("settlement_date", desc=True)
+        .order("id", desc=True)
+        .execute()
+    )
 
-    settlements = conn.execute("""
-        SELECT id, settlement_date, total,
-               mehrshad_paid, shaghayegh_paid,
-               share_per_person, debt_text
-        FROM settlements
-        ORDER BY settlement_date DESC, id DESC
-    """).fetchall()
-
-    conn.close()
-    return settlements
+    return [
+        (
+            settlement["id"],
+            settlement["settlement_date"],
+            float(settlement["total"]),
+            float(settlement["mehrshad_paid"]),
+            float(settlement["shaghayegh_paid"]),
+            float(settlement["share_per_person"]),
+            settlement["debt_text"]
+        )
+        for settlement in response.data
+    ]
 
 
 def calculate_summary(expenses):
@@ -117,21 +126,13 @@ def home():
         amount = float(request.form["amount"])
         expense_date = request.form["expense_date"]
 
-        conn = sqlite3.connect(DB)
-
-        conn.execute("""
-            INSERT INTO expenses
-            (person, description, amount, expense_date, settled)
-            VALUES (?, ?, ?, ?, 0)
-        """, (
-            person,
-            description,
-            amount,
-            expense_date
-        ))
-
-        conn.commit()
-        conn.close()
+        supabase.table("expenses").insert({
+            "person": person,
+            "description": description,
+            "amount": amount,
+            "expense_date": expense_date,
+            "settled": False
+        }).execute()
 
         return redirect("/")
 
@@ -163,46 +164,41 @@ def home():
 @app.route("/edit/<int:expense_id>", methods=["GET", "POST"])
 def edit_expense(expense_id):
 
-    conn = sqlite3.connect(DB)
-
     if request.method == "POST":
         person = request.form["person"]
         description = request.form["description"]
         amount = float(request.form["amount"])
         expense_date = request.form["expense_date"]
 
-        conn.execute("""
-            UPDATE expenses
-            SET person = ?,
-                description = ?,
-                amount = ?,
-                expense_date = ?
-            WHERE id = ?
-            AND settled = 0
-        """, (
-            person,
-            description,
-            amount,
-            expense_date,
-            expense_id
-        ))
-
-        conn.commit()
-        conn.close()
+        supabase.table("expenses").update({
+            "person": person,
+            "description": description,
+            "amount": amount,
+            "expense_date": expense_date
+        }).eq("id", expense_id).eq("settled", False).execute()
 
         return redirect("/")
 
-    expense = conn.execute("""
-        SELECT id, person, description, amount, expense_date
-        FROM expenses
-        WHERE id = ?
-        AND settled = 0
-    """, (expense_id,)).fetchone()
+    response = (
+        supabase
+        .table("expenses")
+        .select("id, person, description, amount, expense_date")
+        .eq("id", expense_id)
+        .eq("settled", False)
+        .maybe_single()
+        .execute()
+    )
 
-    conn.close()
-
-    if expense is None:
+    if not response.data:
         return redirect("/")
+
+    expense = (
+        response.data["id"],
+        response.data["person"],
+        response.data["description"],
+        float(response.data["amount"]),
+        response.data["expense_date"]
+    )
 
     return render_template(
         "edit.html",
@@ -213,16 +209,10 @@ def edit_expense(expense_id):
 @app.route("/delete/<int:expense_id>", methods=["POST"])
 def delete_expense(expense_id):
 
-    conn = sqlite3.connect(DB)
-
-    conn.execute("""
-        DELETE FROM expenses
-        WHERE id = ?
-        AND settled = 0
-    """, (expense_id,))
-
-    conn.commit()
-    conn.close()
+    supabase.table("expenses").delete() \
+        .eq("id", expense_id) \
+        .eq("settled", False) \
+        .execute()
 
     return redirect("/")
 
@@ -243,40 +233,21 @@ def settle():
         debt_text
     ) = calculate_summary(expenses)
 
-    conn = sqlite3.connect(DB)
+    supabase.table("settlements").insert({
+        "settlement_date": date.today().isoformat(),
+        "total": total,
+        "mehrshad_paid": mehrshad_total,
+        "shaghayegh_paid": shaghayegh_total,
+        "share_per_person": share_per_person,
+        "debt_text": debt_text
+    }).execute()
 
-    conn.execute("""
-        INSERT INTO settlements
-        (
-            settlement_date,
-            total,
-            mehrshad_paid,
-            shaghayegh_paid,
-            share_per_person,
-            debt_text
-        )
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (
-        date.today().isoformat(),
-        total,
-        mehrshad_total,
-        shaghayegh_total,
-        share_per_person,
-        debt_text
-    ))
-
-    conn.execute("""
-        UPDATE expenses
-        SET settled = 1
-        WHERE settled = 0
-    """)
-
-    conn.commit()
-    conn.close()
+    supabase.table("expenses").update({
+        "settled": True
+    }).eq("settled", False).execute()
 
     return redirect("/")
 
 
 if __name__ == "__main__":
-    init_db()
     app.run(debug=True)
