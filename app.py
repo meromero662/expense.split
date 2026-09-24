@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect
+from flask import Flask, render_template, request, redirect, send_from_directory
 from datetime import date
 import os
 
@@ -22,6 +22,13 @@ supabase: Client = create_client(
 )
 
 app = Flask(__name__)
+@app.route("/sw.js")
+def service_worker():
+    return send_from_directory(
+        "static",
+        "sw.js",
+        mimetype="application/javascript"
+    )
 
 
 def get_active_expenses():
